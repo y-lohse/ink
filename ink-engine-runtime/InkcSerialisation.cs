@@ -45,6 +45,33 @@ namespace Ink.Runtime
             _sb.Append (" ");
         }
 
+        void Write(Divert divert)
+        {
+            Write (">");
+
+            if (divert.hasVariableTarget) {
+                Write ("?");
+                Write (divert.variableDivertName);
+            } else {
+                Write (divert.targetPathString);
+            }
+            Write (" ");
+
+            if (divert.isExternal) {
+                Write ("x");
+                Write (divert.externalArgs);
+            }
+
+            if (divert.pushesToStack) {
+                if (divert.stackPushType == PushPopType.Function)
+                    Write ("f");
+                else if (divert.stackPushType == PushPopType.Tunnel)
+                    Write ("t");
+            }
+
+            Write (">");
+        }
+
         void Write(Container container)
         {
             Write ("{");
@@ -109,18 +136,16 @@ namespace Ink.Runtime
             } else if (runtimeObj is ControlCommand) {
                 Write ("#");
                 Write (InkcControlCommand.GetName ((ControlCommand)runtimeObj));
-            } 
-
-            else if (runtimeObj is NativeFunctionCall) {
+            } else if (runtimeObj is NativeFunctionCall) {
                 var call = (NativeFunctionCall)runtimeObj;
                 Write ("." + call.name + " ");
-            }
-
-            else if (runtimeObj is IntValue) {
+            } else if (runtimeObj is IntValue) {
                 Write (((IntValue)runtimeObj).value);
             } else if (runtimeObj is FloatValue) {
                 Write (((FloatValue)runtimeObj).value);
-            } 
+            } else if (runtimeObj is Divert) {
+                Write ((Divert)runtimeObj);
+            }
 
             else {
                 Write ("?");
@@ -201,6 +226,35 @@ namespace Ink.Runtime
             return c;
         }
 
+        Divert ReadDivert()
+        {
+            Require(ReadString (">"));
+
+            var divert = new Divert ();
+
+            if (ReadString ("?"))
+                divert.variableDivertName = ReadUntil (' ');
+            else
+                divert.targetPathString = ReadUntil (' ');
+
+            if (ReadString ("x")) {
+                divert.isExternal = true;
+                divert.externalArgs = (int)ReadNumberValue ();
+            }
+
+            if (ReadString ("f")) {
+                divert.pushesToStack = true;
+                divert.stackPushType = PushPopType.Function;
+            } else if (ReadString ("t")) {
+                divert.pushesToStack = true;
+                divert.stackPushType = PushPopType.Tunnel;
+            }
+
+            Require (ReadString (">"));
+
+            return divert;
+        }
+
         Runtime.Object ReadRuntimeObject()
         {
             char peekedChar = _str [_index];
@@ -242,6 +296,10 @@ namespace Ink.Runtime
                 ReadString (".");
                 var opName = ReadUntil (' ');
                 return NativeFunctionCall.CallWithName (opName);
+
+            // Divert
+            case '>':
+                return ReadDivert ();
 
             case '?':
                 throw new System.NotImplementedException ();
