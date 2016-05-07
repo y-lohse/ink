@@ -35,14 +35,14 @@ namespace Ink.Runtime
 
         void Write(int value)
         {
-            _sb.Append ("i");
             _sb.Append (value);
+            _sb.Append (" ");
         }
 
         void Write(float value)
         {
-            _sb.Append ("f");
             _sb.Append (value);
+            _sb.Append (" ");
         }
 
         void Write(Container container)
@@ -78,14 +78,30 @@ namespace Ink.Runtime
                     Write ("\"");
                 }
 
-            } else if (runtimeObj is IntValue) {
-                Write (((IntValue)runtimeObj).value);
-            } else if (runtimeObj is FloatValue) {
-                Write (((FloatValue)runtimeObj).value);
+            } else if (runtimeObj is Glue) {
+                Write ("G");
+                var glue = (Glue)runtimeObj;
+                if (glue.isBi)
+                    Write ("b");
+                else if (glue.isRight)
+                    Write (">");
+                else
+                    Write ("<");
             } else if (runtimeObj is ControlCommand) {
                 Write ("#");
                 Write (InkcControlCommand.GetName ((ControlCommand)runtimeObj));
+            } 
+
+            else if (runtimeObj is NativeFunctionCall) {
+                var call = (NativeFunctionCall)runtimeObj;
+                Write ("." + call.name + " ");
             }
+
+            else if (runtimeObj is IntValue) {
+                Write (((IntValue)runtimeObj).value);
+            } else if (runtimeObj is FloatValue) {
+                Write (((FloatValue)runtimeObj).value);
+            } 
 
             else {
                 Write ("?");
@@ -110,7 +126,8 @@ namespace Ink.Runtime
             Require( ReadString ("inkc "), "Not valid inkc - no 'inkc' header tag");
 
             // TODO: Support more flexible versioning
-            Require(ReadInt () == Story.inkVersionCurrent, "Incorrect ink version");
+            var version = (int)ReadNumberValue();
+            Require(version == Story.inkVersionCurrent, "Incorrect ink version");
 
             ReadString ("\n");
 
@@ -152,13 +169,11 @@ namespace Ink.Runtime
         {
             char peekedChar = _str [_index];
 
+            if (peekedChar >= '0' && peekedChar <= '9') {
+                return Value.Create(ReadNumberValue ());
+            }
+
             switch (peekedChar) {
-            case 'i':
-                return new IntValue ((int)ReadInt ());
-
-            case 'f':
-                return new FloatValue ((float)ReadFloat ());
-
             case '\n':
                 ReadString ("\n");
                 return new StringValue ("\n");
@@ -178,6 +193,20 @@ namespace Ink.Runtime
             case '{':
                 return ReadContainer ();
 
+            case 'G':
+                ReadString ("G");
+                var glueTypeChar = ReadString (1);
+                if (glueTypeChar == "b") return new Glue (GlueType.Bidirectional);
+                else if( glueTypeChar == "<") return new Glue (GlueType.Left);
+                else return new Glue (GlueType.Right);
+
+
+            // Operation
+            case '.':
+                ReadString (".");
+                var opName = ReadUntil (' ');
+                return NativeFunctionCall.CallWithName (opName);
+
             case '?':
                 throw new System.NotImplementedException ();
             }
@@ -185,43 +214,17 @@ namespace Ink.Runtime
             return null;
         }
 
-        int? ReadInt()
+        object ReadNumberValue()
         {
-            if (!ReadString ("i"))
-                return null;
+            var numStr = ReadUntil (' ');
 
-            int startIndex = _index;
-            while (_index < _str.Length && _str [_index] >= '0' && _str [_index] <= '9')
-                _index++;
-
-            Require (_index > startIndex);
-
-            return int.Parse (_str.Substring (startIndex, _index - startIndex));
+            int intVal;
+            if (int.TryParse (numStr, out intVal))
+                return intVal;
+            else
+                return float.Parse (numStr);
         }
 
-        float? ReadFloat()
-        {
-            if (!ReadString ("f"))
-                return null;
-
-            int floatLength = 0;
-            for(; _index+floatLength < _str.Length; floatLength++) {
-
-                var c = _str [_index];
-                if ( (c >= '0' && c <= '9') || c == '.' )
-                    continue;
-                else 
-                    break;
-            }
-
-            Require (floatLength > 0);
-
-            float parsedFloat = float.Parse (_str.Substring (_index, floatLength));
-
-            _index += floatLength;
-
-            return parsedFloat;
-        }
 
         bool ReadString(string str)
         {
