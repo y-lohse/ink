@@ -33,6 +33,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Value.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ChoicePoint.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Choice.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)InkcSerialisation.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)Newtonsoft.Json.dll" />
