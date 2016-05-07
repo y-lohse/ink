@@ -174,9 +174,20 @@ namespace Ink.Runtime
                     Write (">");
                 else
                     Write ("<");
-            } else if (runtimeObj is ControlCommand) {
-                Write ("#");
-                Write (InkcControlCommand.GetName ((ControlCommand)runtimeObj));
+            } 
+
+            else if (runtimeObj is ControlCommand) {
+                var controlCommand = (ControlCommand)runtimeObj;
+                switch (controlCommand.commandType) {
+                case ControlCommand.CommandType.EvalStart: Write ("("); break;
+                case ControlCommand.CommandType.EvalEnd: Write (")"); break;
+                case ControlCommand.CommandType.BeginString: Write ("«"); break;
+                case ControlCommand.CommandType.EndString: Write ("»"); break;
+                default:
+                    Write ("#");
+                    Write (InkcControlCommand.GetName (controlCommand));
+                    break;
+                }
             } else if (runtimeObj is NativeFunctionCall) {
                 var call = (NativeFunctionCall)runtimeObj;
                 Write ("." + call.name + " ");
@@ -371,6 +382,20 @@ namespace Ink.Runtime
 
                 return str;
 
+            // More readable syntax than #ev and #/e
+            case '(':
+                ReadString ("(");
+                return ControlCommand.EvalStart ();
+            case ')':
+                ReadString (")");
+                return ControlCommand.EvalEnd ();
+            case '«':
+                ReadString ("«");
+                return ControlCommand.BeginString ();
+            case '»':
+                ReadString ("»");
+                return ControlCommand.EndString ();
+
             case '#':
                 ReadString ("#");
                 return InkcControlCommand.WithName (ReadString (InkcControlCommand.NameLength));
@@ -499,15 +524,19 @@ namespace Ink.Runtime
             _controlCommandNames = new string[(int)ControlCommand.CommandType.TOTAL_VALUES];
             _controlCommandTypes = new Dictionary<string, ControlCommand.CommandType> ();
 
-            _controlCommandNames [(int)ControlCommand.CommandType.EvalStart] = "ev";
+            // These four are replaced with slightly more readable single characters handled
+            // as special cases: ( ) « »
+            _controlCommandNames [(int)ControlCommand.CommandType.EvalStart] = "ev";     // (
+            _controlCommandNames [(int)ControlCommand.CommandType.EvalEnd] = "/e";       // )
+            _controlCommandNames [(int)ControlCommand.CommandType.BeginString] = "st";   // «
+            _controlCommandNames [(int)ControlCommand.CommandType.EndString] = "/s";     // »
+
+
             _controlCommandNames [(int)ControlCommand.CommandType.EvalOutput] = "ou";
-            _controlCommandNames [(int)ControlCommand.CommandType.EvalEnd] = "/e";
             _controlCommandNames [(int)ControlCommand.CommandType.Duplicate] = "du";
             _controlCommandNames [(int)ControlCommand.CommandType.PopEvaluatedValue] = "po";
             _controlCommandNames [(int)ControlCommand.CommandType.PopFunction] = "rt";
             _controlCommandNames [(int)ControlCommand.CommandType.PopTunnel] = ">>";
-            _controlCommandNames [(int)ControlCommand.CommandType.BeginString] = "st";
-            _controlCommandNames [(int)ControlCommand.CommandType.EndString] = "/s";
             _controlCommandNames [(int)ControlCommand.CommandType.NoOp] = "no";
             _controlCommandNames [(int)ControlCommand.CommandType.ChoiceCount] = "cc";
             _controlCommandNames [(int)ControlCommand.CommandType.TurnsSince] = "tu";
