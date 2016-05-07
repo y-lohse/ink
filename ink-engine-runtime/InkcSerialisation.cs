@@ -47,11 +47,30 @@ namespace Ink.Runtime
 
         void Write(Container container)
         {
-            _sb.Append ("{");
+            Write ("{");
+
+            if (container.hasValidName) {
+                Write ("'" + container.name + "'");
+            }
 
             Write (container.content);
 
-            _sb.Append ("}");
+            var namedOnlyContent = container.namedOnlyContent;
+            if (namedOnlyContent != null && namedOnlyContent.Count > 0) {
+                Write ("[");
+
+                foreach (var namedRuntimeObj in container.namedOnlyContent)
+                    Write (namedRuntimeObj.Value);
+
+                Write ("]");
+            }
+
+            if (container.countFlags != 0) {
+                Write ("f");
+                Write (container.countFlags);
+            }
+                
+            Write("}");
         }
 
         void Write(List<Runtime.Object> runtimeObjList)
@@ -151,15 +170,32 @@ namespace Ink.Runtime
             throw new System.Exception (err);
         }
 
+        // Full syntax:
+        // {'containerName'runtimeobjects[namedonlycontent]}
         Container ReadContainer()
         {
             Require (ReadString ("{"));
 
             var c = new Container ();
 
+            if (ReadString ("'")) {
+                c.name = ReadUntil ('\'');
+            }
+
             while( !ReadString("}") ) {
                 var obj = ReadRuntimeObject ();
                 c.AddContent (obj);
+
+                // Optional named content
+                if (ReadString ("[")) {
+                    while( !ReadString("]") ) {
+                        var namedObj = ReadRuntimeObject ();
+                        c.AddToNamedContentOnly ((INamedContent)namedObj);
+                    }
+                }
+
+                if (ReadString ("f"))
+                    c.countFlags = (int) ReadNumberValue ();
             }
                 
             return c;
