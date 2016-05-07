@@ -10,13 +10,15 @@ namespace Ink.Runtime
     // {   - Container
     // [   - Container's named content section
     // >   - Divert
+    // ^   - Divert target value
     // .   - Native function
     // "   - String value
     // \n  - Single newline string value
     // =   - Variable assignment
-    // ?   - Variable reference
+    // $   - Variable reference
+    // R   - Variable pointer value (R for reference)
     // G   - Glue
-    // 0-9 - Int or float
+    // -, 0-9 - Int or float
     // (   - Begin evaluation mode control command
     // )   - End evaluation mode control command
     // «   - Begin string control command
@@ -24,6 +26,7 @@ namespace Ink.Runtime
     // #   - Other control commands
     // *   - Choice point
     // B   - Branch
+    // V   - Void
 
     internal class InkcWriter
     {
@@ -94,6 +97,13 @@ namespace Ink.Runtime
             Write (">");
         }
 
+        void Write(DivertTargetValue divertTargetValue)
+        {
+            Write ("^");
+            Write (divertTargetValue.targetPath.componentsString);
+            Write (" ");
+        }
+
         void Write(VariableAssignment varAss)
         {
             Write ("=");
@@ -108,7 +118,7 @@ namespace Ink.Runtime
 
         void Write(VariableReference varRef)
         {
-            Write ("?");
+            Write ("$");
 
             var readCountPath = varRef.pathStringForCount;
             if (readCountPath != null) {
@@ -118,6 +128,15 @@ namespace Ink.Runtime
                 Write (varRef.name);
             }
 
+            Write (" ");
+        }
+
+        void Write(VariablePointerValue varPtr)
+        {
+            // R for ref (ink keyword)
+            Write ("R");
+            Write (varPtr.contextIndex);
+            Write (varPtr.value);
             Write (" ");
         }
 
@@ -242,14 +261,20 @@ namespace Ink.Runtime
                 Write (((FloatValue)runtimeObj).value);
             } else if (runtimeObj is Divert) {
                 Write ((Divert)runtimeObj);
+            } else if (runtimeObj is DivertTargetValue) {
+                Write ((DivertTargetValue)runtimeObj);
             } else if (runtimeObj is VariableAssignment) {
                 Write ((VariableAssignment)runtimeObj);
             } else if (runtimeObj is VariableReference) {
                 Write ((VariableReference)runtimeObj);
+            } else if (runtimeObj is VariablePointerValue) {
+                Write ((VariablePointerValue)runtimeObj);
             } else if (runtimeObj is ChoicePoint) {
                 Write ((ChoicePoint)runtimeObj);
             } else if (runtimeObj is Branch) {
                 Write ((Branch)runtimeObj);
+            } else if (runtimeObj is Void) {
+                Write ("V");
             }
 
             else {
@@ -360,6 +385,13 @@ namespace Ink.Runtime
             return divert;
         }
 
+        DivertTargetValue ReadDivertTargetValue()
+        {
+            Require (ReadString ("^"));
+            var pathStr = ReadUntil (' ');
+            return new DivertTargetValue (new Path (pathStr));
+        }
+
         VariableAssignment ReadVariableAssignment()
         {
             Require (ReadString ("="));
@@ -377,7 +409,7 @@ namespace Ink.Runtime
 
         VariableReference ReadVariableReference()
         {
-            Require(ReadString ("?"));
+            Require(ReadString ("$"));
             bool isReadCount = ReadString ("&");
             string name = ReadUntil (' ');
 
@@ -389,6 +421,18 @@ namespace Ink.Runtime
                 varRef.name = name;
             
             return varRef;
+        }
+
+        VariablePointerValue ReadVariablePointerValue()
+        {
+            // R for reference (since it's used for "ref" keyword in ink)
+            Require (ReadString ("R"));
+
+            int context = (int) ReadNumberValue ();
+
+            string variableName = ReadUntil (' ');
+
+            return new VariablePointerValue (variableName, context);
         }
 
         ChoicePoint ReadChoicePoint()
@@ -430,7 +474,7 @@ namespace Ink.Runtime
         {
             char peekedChar = _str [_index];
 
-            if (peekedChar >= '0' && peekedChar <= '9') {
+            if ( (peekedChar >= '0' && peekedChar <= '9') || peekedChar == '-' ) {
                 return Value.Create(ReadNumberValue ());
             }
 
@@ -486,13 +530,21 @@ namespace Ink.Runtime
             case '>':
                 return ReadDivert ();
 
+            // Divert target value
+            case '^':
+                return ReadDivertTargetValue ();
+
             // Variable assignment
             case '=':
                 return ReadVariableAssignment ();
 
             // Variable reference
-            case '?':
+            case '$':
                 return ReadVariableReference ();
+
+            // Variable pointer value
+            case 'R':
+                return ReadVariablePointerValue ();
 
             // Choice point
             case '*':
@@ -501,6 +553,11 @@ namespace Ink.Runtime
             // Branch
             case 'B':
                 return ReadBranch ();
+
+            // Void
+            case 'V':
+                ReadString ("V");
+                return new Void ();
             }
                 
             return null;
