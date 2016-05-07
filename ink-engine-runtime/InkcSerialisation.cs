@@ -3,6 +3,28 @@ using System.Collections.Generic;
 
 namespace Ink.Runtime
 {
+    // Pseudo bytecode. Text based format that is ascii-character driven.
+    // At the fundamental runtime-object level, the parsing can branch based on
+    // the initial character. Full dictionary of them:
+    //
+    // {   - Container
+    // [   - Container's named content section
+    // >   - Divert
+    // .   - Native function
+    // "   - String value
+    // \n  - Single newline string value
+    // =   - Variable assignment
+    // ?   - Variable reference
+    // G   - Glue
+    // 0-9 - Int or float
+    // (   - Begin evaluation mode control command
+    // )   - End evaluation mode control command
+    // «   - Begin string control command
+    // »   - End string control command
+    // #   - Other control commands
+    // *   - Choice point
+    // B   - Branch
+
     internal class InkcWriter
     {
         public InkcWriter(Story story)
@@ -113,6 +135,23 @@ namespace Ink.Runtime
             Write (" ");
         }
 
+        void Write(Branch branch)
+        {
+            Write ("B");
+
+            if (branch.trueDivert) {
+                Write ("t");
+                Write (branch.trueDivert);
+            }
+
+            if (branch.falseDivert) {
+                Write ("f");
+                Write (branch.falseDivert);
+            }
+
+            Write (" ");
+        }
+
         void Write(Container container)
         {
             Write ("{");
@@ -174,15 +213,21 @@ namespace Ink.Runtime
                     Write (">");
                 else
                     Write ("<");
-            } 
-
-            else if (runtimeObj is ControlCommand) {
+            } else if (runtimeObj is ControlCommand) {
                 var controlCommand = (ControlCommand)runtimeObj;
                 switch (controlCommand.commandType) {
-                case ControlCommand.CommandType.EvalStart: Write ("("); break;
-                case ControlCommand.CommandType.EvalEnd: Write (")"); break;
-                case ControlCommand.CommandType.BeginString: Write ("«"); break;
-                case ControlCommand.CommandType.EndString: Write ("»"); break;
+                case ControlCommand.CommandType.EvalStart:
+                    Write ("(");
+                    break;
+                case ControlCommand.CommandType.EvalEnd:
+                    Write (")");
+                    break;
+                case ControlCommand.CommandType.BeginString:
+                    Write ("«");
+                    break;
+                case ControlCommand.CommandType.EndString:
+                    Write ("»");
+                    break;
                 default:
                     Write ("#");
                     Write (InkcControlCommand.GetName (controlCommand));
@@ -203,6 +248,8 @@ namespace Ink.Runtime
                 Write ((VariableReference)runtimeObj);
             } else if (runtimeObj is ChoicePoint) {
                 Write ((ChoicePoint)runtimeObj);
+            } else if (runtimeObj is Branch) {
+                Write ((Branch)runtimeObj);
             }
 
             else {
@@ -361,6 +408,24 @@ namespace Ink.Runtime
             return choicePoint;
         }
 
+        Branch ReadBranch()
+        {
+            Require (ReadString ("B"));
+
+            Divert trueDivert = null;
+            Divert falseDivert = null;
+
+            if (ReadString ("t"))
+                trueDivert = ReadDivert ();
+
+            if (ReadString ("f"))
+                falseDivert = ReadDivert ();
+
+            ReadString (" ");
+
+            return new Branch (trueDivert, falseDivert);
+        }
+
         Runtime.Object ReadRuntimeObject()
         {
             char peekedChar = _str [_index];
@@ -432,9 +497,11 @@ namespace Ink.Runtime
             // Choice point
             case '*':
                 return ReadChoicePoint ();
+
+            // Branch
+            case 'B':
+                return ReadBranch ();
             }
-
-
                 
             return null;
         }
