@@ -99,6 +99,20 @@ namespace Ink.Runtime
             Write (" ");
         }
 
+        void Write(ChoicePoint choicePoint)
+        {
+            Write ("*");
+
+            int flags = choicePoint.flags;
+            if (flags > 0)
+                Write (flags);
+            else
+                Write (" ");
+
+            Write (choicePoint.pathStringOnChoice);
+            Write (" ");
+        }
+
         void Write(Container container)
         {
             Write ("{");
@@ -176,6 +190,8 @@ namespace Ink.Runtime
                 Write ((VariableAssignment)runtimeObj);
             } else if (runtimeObj is VariableReference) {
                 Write ((VariableReference)runtimeObj);
+            } else if (runtimeObj is ChoicePoint) {
+                Write ((ChoicePoint)runtimeObj);
             }
 
             else {
@@ -317,6 +333,23 @@ namespace Ink.Runtime
             return varRef;
         }
 
+        ChoicePoint ReadChoicePoint()
+        {
+            Require (ReadString ("*"));
+
+            var choicePoint = new ChoicePoint ();
+
+            var flagsStr = ReadUntil (' ');
+            if (flagsStr.Length > 0)
+                choicePoint.flags = int.Parse (flagsStr);
+            else
+                choicePoint.flags = 0;
+
+            choicePoint.pathStringOnChoice = ReadUntil (' ');
+
+            return choicePoint;
+        }
+
         Runtime.Object ReadRuntimeObject()
         {
             char peekedChar = _str [_index];
@@ -370,7 +403,13 @@ namespace Ink.Runtime
             // Variable reference
             case '?':
                 return ReadVariableReference ();
+
+            // Choice point
+            case '*':
+                return ReadChoicePoint ();
             }
+
+
                 
             return null;
         }

@@ -36,18 +36,18 @@ namespace Ink.Runtime
             get {
                 int flags = 0;
                 if (hasCondition)         flags |= 1;
-                if (hasStartContent)      flags |= 2;
+                if (!hasStartContent)     flags |= 2; // invert due to default
                 if (hasChoiceOnlyContent) flags |= 4;
                 if (isInvisibleDefault)   flags |= 8;
-                if (onceOnly)             flags |= 16;
+                if (!onceOnly)            flags |= 16; // invert due to default
                 return flags;
             }
             set {
                 hasCondition = (value & 1) > 0;
-                hasStartContent = (value & 2) > 0;
+                hasStartContent = !((value & 2) > 0); // invert due to default
                 hasChoiceOnlyContent = (value & 4) > 0;
                 isInvisibleDefault = (value & 8) > 0;
-                onceOnly = (value & 16) > 0;
+                onceOnly = !((value & 16) > 0); // invert due to default
             }
         }
 
