@@ -72,6 +72,33 @@ namespace Ink.Runtime
             Write (">");
         }
 
+        void Write(VariableAssignment varAss)
+        {
+            Write ("=");
+            if (!varAss.isGlobal)
+                Write ("t"); // t=temp
+            if (!varAss.isNewDeclaration)
+                Write ("r"); // r=reassignment
+            Write(" ");
+            Write (varAss.variableName);
+            Write (" ");
+        }
+
+        void Write(VariableReference varRef)
+        {
+            Write ("?");
+
+            var readCountPath = varRef.pathStringForCount;
+            if (readCountPath != null) {
+                Write ("&");
+                Write (readCountPath);
+            } else {
+                Write (varRef.name);
+            }
+
+            Write (" ");
+        }
+
         void Write(Container container)
         {
             Write ("{");
@@ -145,10 +172,14 @@ namespace Ink.Runtime
                 Write (((FloatValue)runtimeObj).value);
             } else if (runtimeObj is Divert) {
                 Write ((Divert)runtimeObj);
+            } else if (runtimeObj is VariableAssignment) {
+                Write ((VariableAssignment)runtimeObj);
+            } else if (runtimeObj is VariableReference) {
+                Write ((VariableReference)runtimeObj);
             }
 
             else {
-                Write ("?");
+                throw new System.NotImplementedException (runtimeObj.GetType().Name + " not yet implemented");
             }
         }
 
@@ -255,6 +286,37 @@ namespace Ink.Runtime
             return divert;
         }
 
+        VariableAssignment ReadVariableAssignment()
+        {
+            Require (ReadString ("="));
+
+            bool isGlobal = !ReadString ("t"); // t=temp
+            bool isNewDeclaration = !ReadString ("r"); // r=reassignment
+                
+            ReadString (" ");
+            string variableName = ReadUntil (' ');
+
+            var varAss = new VariableAssignment (variableName, isNewDeclaration);
+            varAss.isGlobal = isGlobal;
+            return varAss;
+        }
+
+        VariableReference ReadVariableReference()
+        {
+            Require(ReadString ("?"));
+            bool isReadCount = ReadString ("&");
+            string name = ReadUntil (' ');
+
+            var varRef = new VariableReference ();
+
+            if (isReadCount)
+                varRef.pathStringForCount = name;
+            else
+                varRef.name = name;
+            
+            return varRef;
+        }
+
         Runtime.Object ReadRuntimeObject()
         {
             char peekedChar = _str [_index];
@@ -301,8 +363,13 @@ namespace Ink.Runtime
             case '>':
                 return ReadDivert ();
 
+            // Variable assignment
+            case '=':
+                return ReadVariableAssignment ();
+
+            // Variable reference
             case '?':
-                throw new System.NotImplementedException ();
+                return ReadVariableReference ();
             }
                 
             return null;
