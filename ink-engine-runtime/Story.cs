@@ -103,38 +103,54 @@ namespace Ink.Runtime
 		}
 
         /// <summary>
-        /// Construct a Story object using a JSON string compiled through inklecate.
+        /// Construct a Story object using a JSON or inkc string compiled through inklecate.
         /// </summary>
         public Story(string jsonOrInkCString) : this((Container)null)
         {
-            if (jsonOrInkCString.StartsWith ("inkc")) {
-                var reader = new InkcReader (jsonOrInkCString);
-                _mainContentContainer = reader.ReadStoryWithContainer ();
-            } else {
-                JObject rootObject = JObject.Parse (jsonOrInkCString);
+            InkcReader inkcReader = null;
+            JObject jsonObject = null;
+            int formatFromFile = -1;
 
-                var versionObj = rootObject ["inkVersion"];
+            // inkc - start parsing, initially just to check version
+            if ( jsonOrInkCString.StartsWith ("inkc") ) {
+                inkcReader = new InkcReader (jsonOrInkCString);
+                formatFromFile = inkcReader.ReadHeaderWithVersion ();
+            } 
+
+            // JSON - start by checking version
+            else {
+                jsonObject = JObject.Parse (jsonOrInkCString);
+
+                var versionObj = jsonObject ["inkVersion"];
                 if (versionObj == null)
                     throw new System.Exception ("ink version number not found. Are you sure it's a valid .ink.json file?");
-
-                int formatFromFile = versionObj.ToObject<int> ();
-                if (formatFromFile > inkVersionCurrent) {
-                    throw new System.Exception ("Version of ink used to build story was newer than the current verison of the engine");
-                } else if (formatFromFile < inkVersionMinimumCompatible) {
-                    throw new System.Exception ("Version of ink used to build story is too old to be loaded by this verison of the engine");
-                } else if (formatFromFile != inkVersionCurrent) {
-                    Console.WriteLine ("WARNING: Version of ink used to build story doesn't match current version of engine. Non-critical, but recommend synchronising.");
-                }
-
-                var rootToken = rootObject ["root"];
-                if (rootToken == null)
-                    throw new System.Exception ("Root node for ink not found. Are you sure it's a valid .ink.json file?");
-
-
-                _mainContentContainer = Json.JTokenToRuntimeObject (rootToken) as Container;
+                
+                formatFromFile = versionObj.ToObject<int> ();
             }
 
+            if (formatFromFile > inkVersionCurrent) {
+                throw new System.Exception ("Version of ink used to build story was newer than the current verison of the engine");
+            } else if (formatFromFile < inkVersionMinimumCompatible) {
+                throw new System.Exception ("Version of ink used to build story is too old to be loaded by this verison of the engine");
+            } else if (formatFromFile != inkVersionCurrent) {
+                Console.WriteLine ("WARNING: Version of ink used to build story doesn't match current version of engine. Non-critical, but recommend synchronising.");
+            }
 
+            // Main parsing - inkc
+            if (inkcReader != null) {
+                _mainContentContainer = inkcReader.ReadContainer ();
+            } 
+
+            // Main parsing - JSON
+            else {
+                var rootJsonToken = jsonObject ["root"];
+                if (rootJsonToken == null)
+                    throw new System.Exception ("Root node for ink not found. Are you sure it's a valid .ink.json file?");
+
+                _mainContentContainer = Json.JTokenToRuntimeObject (rootJsonToken) as Container;
+            }
+
+            // Setup Story ready for use
             ResetState ();
         }
 

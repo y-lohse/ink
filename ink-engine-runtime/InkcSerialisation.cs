@@ -307,17 +307,15 @@ namespace Ink.Runtime
             _index = 0;
         }
 
-        public Container ReadStoryWithContainer()
+        public int ReadHeaderWithVersion()
         {
             Require( ReadString ("inkc "), "Not valid inkc - no 'inkc' header tag");
 
-            // TODO: Support more flexible versioning
             var version = (int)ReadNumberValue();
-            Require(version == Story.inkVersionCurrent, "Incorrect ink version");
 
             ReadString ("\n");
 
-            return ReadContainer ();
+            return version;
         }
 
         void Require(bool b, string errorMessage=null)
@@ -339,7 +337,7 @@ namespace Ink.Runtime
 
         // Full syntax:
         // {'containerName'runtimeobjects[namedonlycontent]}
-        Container ReadContainer()
+        public Container ReadContainer()
         {
             Require (ReadString ("{"));
 
