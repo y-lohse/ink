@@ -8,11 +8,13 @@ namespace Tests
     public enum TestMode
     {
         Normal,
-        JsonRoundTrip
+        JsonRoundTrip,
+        InkcRoundTrip
     }
 
     [TestFixture(TestMode.Normal)]
     [TestFixture(TestMode.JsonRoundTrip)]
+    [TestFixture(TestMode.InkcRoundTrip)]
 	internal class Tests
 	{
         public Tests(TestMode mode)
@@ -75,8 +77,14 @@ namespace Tests
 
             // Convert to json and back again
             if (_mode == TestMode.JsonRoundTrip) {
-                var jsonStr = story.ToJsonString (indented:true);
+                var jsonStr = story.ToJsonString (indented: true);
                 story = new Story (jsonStr);
+            } 
+
+            // Convert to inkc and back again
+            else if (_mode == TestMode.InkcRoundTrip) {
+                var inkcStr = story.ToInkcString ();
+                story = new Story (inkcStr);
             }
 
 			return story;

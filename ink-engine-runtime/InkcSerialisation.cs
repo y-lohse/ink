@@ -58,6 +58,20 @@ namespace Ink.Runtime
             _sb.Append (str);
         }
 
+        // Write out the string, but escape " and \ with \
+        void WriteQuotedString(string str)
+        {
+            Write ("\"");
+
+            foreach (char c in str) {
+                if (c == '"' || c == '\\')
+                    _sb.Append ('\\');
+                _sb.Append (c);
+            }
+
+            Write ("\"");
+        }
+
         void Write(int value)
         {
             _sb.Append (value);
@@ -66,7 +80,8 @@ namespace Ink.Runtime
 
         void Write(float value)
         {
-            _sb.Append (value);
+            // Force decimal point
+            _sb.Append (value.ToString(".0#############"));
             _sb.Append (" ");
         }
 
@@ -217,10 +232,7 @@ namespace Ink.Runtime
                 if (strVal.isNewline)
                     Write ("\n");
                 else {
-                    Write ("\"");
-                    // TODO: Escape quotes
-                    Write (strVal.value);
-                    Write ("\"");
+                    WriteQuotedString (strVal.value);
                 }
 
             } else if (runtimeObj is Glue) {
@@ -484,11 +496,7 @@ namespace Ink.Runtime
                 return new StringValue ("\n");
 
             case '"':
-                ReadString ("\"");
-
-                // TODO: Cope with escaped strings
-                var str = new StringValue (ReadUntil ('"'));
-
+                var str = new StringValue (ReadQuotedString());
                 return str;
 
             // More readable syntax than #ev and #/e
@@ -598,6 +606,30 @@ namespace Ink.Runtime
             _index += length;
 
             return str;
+        }
+
+        string ReadQuotedString()
+        {
+            var sb = new StringBuilder ();
+
+            Require(ReadString("\""));
+
+            // Skip over the character that follows a \ since
+            // it's escaped.
+            while (_index < _str.Length-1) {
+                char c = _str [_index];
+                if (c == '\\')
+                    _index++;
+                else if (c == '"')
+                    break;
+
+                sb.Append (_str [_index]);
+                _index++;
+            }
+
+            Require(ReadString("\""));
+
+            return sb.ToString ();
         }
 
         string ReadUntil(char c)
