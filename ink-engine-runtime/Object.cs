@@ -193,6 +193,10 @@ namespace Ink.Runtime
 		{
 		}
 
+        /// <summary>
+        /// Copy this instance. Only implemented by a few objects that need
+        /// it in order to copy constant definitions.
+        /// </summary>
         public virtual Object Copy()
         {
             throw new System.NotImplementedException (GetType ().Name + " doesn't support copying");

@@ -15,6 +15,7 @@ namespace Ink
 			public bool playMode;
 			public string inputFile;
             public string outputFile;
+            public bool useInkc;
             public bool indentedJson;
             public bool countAllVisits;
 		}
@@ -34,6 +35,7 @@ namespace Ink
                 "   -c:              Count all visits to knots, stitches and weave points, not\n" +
                 "                    just those referenced by TURNS_SINCE and read counts.\n" +
                 "   -p:              Play mode\n"+
+                "   -k:              Compile to inkc rather than JSON\n"+
                 "   -i:              Use indentation in output JSON\n"+
                 "   -v:              Verbose mode - print compilation timings\n"+
                 "   -x <pluginname>: Use external plugin. 'ChoiceListPlugin' is only available plugin right now.\n"+
@@ -60,8 +62,10 @@ namespace Ink
             string inputString = null;
             string workingDirectory = Directory.GetCurrentDirectory();
 
-            if (opts.outputFile == null)
-                opts.outputFile = Path.ChangeExtension (opts.inputFile, ".ink.json");
+            if (opts.outputFile == null) {
+                string extension = opts.useInkc ? "inkc" : "json";
+                opts.outputFile = Path.ChangeExtension (opts.inputFile, ".ink."+extension);
+            }
 
             if( !Path.IsPathRooted(opts.outputFile) )
                 opts.outputFile = Path.Combine (workingDirectory, opts.outputFile);
@@ -109,10 +113,10 @@ namespace Ink
             authorMessages = new List<string> ();
             var pluginManager = new PluginManager (pluginNames);
 
-            var inputIsJson = opts.inputFile.EndsWith (".json");
+            var inputIsCompiledAlready = opts.inputFile.EndsWith (".json") || opts.inputFile.EndsWith(".inkc");
 
             // Loading a normal ink file (as opposed to an already compiled json file)
-            if (!inputIsJson) {
+            if (!inputIsCompiledAlready) {
                 TimeOperation ("Creating parser", () => {
                     parser = new InkParser (inputString, opts.inputFile, OnError);
                 });
@@ -143,7 +147,7 @@ namespace Ink
 
             } 
 
-            // Opening up a compiled json file for playing
+            // Opening up a compiled json/inkc file for playing
             else {
                 story = new Runtime.Story (inputString);
 
@@ -158,7 +162,21 @@ namespace Ink
             if (story == null || errors.Count > 0) {
 				Environment.Exit (ExitCodeError);
 			}
-                
+
+            // Inkc round trip testing
+//            if (opts.testMode) {
+//                string inkC = story.ToInkcString ();
+//                Console.WriteLine (inkC);
+//
+//                Console.WriteLine ("---------------------------------------------------");
+//
+//                var reloadedStory = new Runtime.Story (inkC);
+//                var newInkc = reloadedStory.ToInkcString ();
+//                Console.WriteLine (newInkc);
+//
+//                story = reloadedStory;
+//            }  
+
             // JSON round trip testing
 //            if (opts.testMode) {
 //                var jsonStr = story.ToJsonString (indented:true);
@@ -187,11 +205,16 @@ namespace Ink
 
             // Compile mode
             else {
-                
-                var jsonStr = story.ToJsonString (opts.indentedJson);
 
+                string compiledStr;
+
+                if (opts.useInkc)
+                    compiledStr = story.ToInkcString ();
+                else
+                    compiledStr = story.ToJsonString (opts.indentedJson);
+                
                 try {
-                    File.WriteAllText (opts.outputFile, jsonStr, System.Text.Encoding.UTF8);
+                    File.WriteAllText (opts.outputFile, compiledStr, System.Text.Encoding.UTF8);
                 } catch {
                     Console.WriteLine ("Could not write to output file '" + opts.outputFile+"'");
                     Environment.Exit (ExitCodeError);
@@ -279,6 +302,9 @@ namespace Ink
                             break;
                         case 'i':
                             opts.indentedJson = true;
+                            break;
+                        case 'k':
+                            opts.useInkc = true;
                             break;
                         case 'c':
                             opts.countAllVisits = true;
