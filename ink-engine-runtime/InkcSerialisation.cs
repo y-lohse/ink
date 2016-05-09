@@ -25,7 +25,6 @@ namespace Ink.Runtime
     // »   - End string control command
     // #   - Other control commands
     // *   - Choice point
-    // B   - Branch
     // V   - Void
 
     internal class InkcWriter
@@ -96,6 +95,9 @@ namespace Ink.Runtime
                 Write (divert.targetPathString);
             }
             Write (" ");
+
+            if (divert.isConditional)
+                Write ("c");
 
             if (divert.isExternal) {
                 Write ("x");
@@ -168,24 +170,7 @@ namespace Ink.Runtime
             Write (choicePoint.pathStringOnChoice);
             Write (" ");
         }
-
-        void Write(Branch branch)
-        {
-            Write ("B");
-
-            if (branch.trueDivert) {
-                Write ("t");
-                Write (branch.trueDivert);
-            }
-
-            if (branch.falseDivert) {
-                Write ("f");
-                Write (branch.falseDivert);
-            }
-
-            Write (" ");
-        }
-
+            
         void Write(Container container)
         {
             Write ("{");
@@ -283,8 +268,6 @@ namespace Ink.Runtime
                 Write ((VariablePointerValue)runtimeObj);
             } else if (runtimeObj is ChoicePoint) {
                 Write ((ChoicePoint)runtimeObj);
-            } else if (runtimeObj is Branch) {
-                Write ((Branch)runtimeObj);
             } else if (runtimeObj is Void) {
                 Write ("V");
             }
@@ -377,6 +360,8 @@ namespace Ink.Runtime
             else
                 divert.targetPathString = ReadUntil (' ');
 
+            divert.isConditional = ReadString("c");
+
             if (ReadString ("x")) {
                 divert.isExternal = true;
                 divert.externalArgs = (int)ReadNumberValue ();
@@ -462,24 +447,6 @@ namespace Ink.Runtime
             return choicePoint;
         }
 
-        Branch ReadBranch()
-        {
-            Require (ReadString ("B"));
-
-            Divert trueDivert = null;
-            Divert falseDivert = null;
-
-            if (ReadString ("t"))
-                trueDivert = ReadDivert ();
-
-            if (ReadString ("f"))
-                falseDivert = ReadDivert ();
-
-            ReadString (" ");
-
-            return new Branch (trueDivert, falseDivert);
-        }
-
         Runtime.Object ReadRuntimeObject()
         {
             char peekedChar = _str [_index];
@@ -555,10 +522,6 @@ namespace Ink.Runtime
             // Choice point
             case '*':
                 return ReadChoicePoint ();
-
-            // Branch
-            case 'B':
-                return ReadBranch ();
 
             // Void
             case 'V':

@@ -653,6 +653,15 @@ namespace Ink.Runtime
             if (contentObj is Divert) {
                 
                 Divert currentDivert = (Divert)contentObj;
+
+                if (currentDivert.isConditional) {
+                    var conditionValue = state.PopEvaluationStack ();
+
+                    // False conditional? Cancel divert
+                    if (!IsTruthy (conditionValue))
+                        return true;
+                }
+
                 if (currentDivert.hasVariableTarget) {
                     var varName = currentDivert.variableDivertName;
 
@@ -696,19 +705,6 @@ namespace Ink.Runtime
                     }
                 }
 
-                return true;
-            } 
-
-            // Branch (conditional divert)
-            else if (contentObj is Branch) {
-                var branch = (Branch)contentObj;
-                var conditionValue = state.PopEvaluationStack ();
-
-                if (IsTruthy (conditionValue))
-                    state.divertedTargetObject = branch.trueDivert.targetContent;
-                else if (branch.falseDivert)
-                    state.divertedTargetObject = branch.falseDivert.targetContent;
-                
                 return true;
             } 
 
