@@ -15,8 +15,8 @@ namespace Ink
 			public bool playMode;
 			public string inputFile;
             public string outputFile;
-            public bool indentedJson;
             public bool countAllVisits;
+            public bool keepOpenAfterStoryFinish;
 		}
 
 		public static int ExitCodeError = 1;
@@ -34,12 +34,12 @@ namespace Ink
                 "   -c:              Count all visits to knots, stitches and weave points, not\n" +
                 "                    just those referenced by TURNS_SINCE and read counts.\n" +
                 "   -p:              Play mode\n"+
-                "   -i:              Use indentation in output JSON\n"+
                 "   -v:              Verbose mode - print compilation timings\n"+
                 "   -x <pluginname>: Use external plugin. 'ChoiceListPlugin' is only available plugin right now.\n"+
                 "   -t:              Test mode - loads up test.ink\n"+
                 "   -s:              Stress test mode - generates test content and \n" +
-                "                    times compilation\n");
+                "                    times compilation\n" + 
+                "   -k:              Keep inklecate running in play mode even after story is complete\n");
             Environment.Exit (ExitCodeError);
         }
             
@@ -184,7 +184,7 @@ namespace Ink
                 // Always allow ink external fallbacks
                 story.allowExternalFunctionFallbacks = true;
 
-                var player = new CommandLinePlayer (story, false, parsedStory);
+                var player = new CommandLinePlayer (story, false, parsedStory, opts.keepOpenAfterStoryFinish);
 
                 //Capture a CTRL+C key combo so we can restore the console's foreground color back to normal when exiting
                 Console.CancelKeyPress += OnExit;
@@ -194,7 +194,7 @@ namespace Ink
             // Compile mode
             else {
                 
-                var jsonStr = story.ToJsonString (opts.indentedJson);
+                var jsonStr = story.ToJsonString ();
 
                 try {
                     File.WriteAllText (opts.outputFile, jsonStr, System.Text.Encoding.UTF8);
@@ -287,14 +287,14 @@ namespace Ink
                         case 'o':
                             nextArgIsOutputFilename = true;   
                             break;
-                        case 'i':
-                            opts.indentedJson = true;
-                            break;
                         case 'c':
                             opts.countAllVisits = true;
                             break;
                         case 'x':
                             nextArgIsPlugin = true;
+                            break;
+                        case 'k':
+                            opts.keepOpenAfterStoryFinish = true;
                             break;
                         default:
                             Console.WriteLine ("Unsupported argument type: '{0}'", argChar);

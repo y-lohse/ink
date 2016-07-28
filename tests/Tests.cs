@@ -2252,6 +2252,28 @@ this is the end
             Assert.AreEqual ("0\n", story.Continue ());
         }
 
+        [Test()]
+        public void TestThreadInLogic()
+        {
+            var storyStr =
+                @"
+-> once ->
+-> once ->
+
+== once ==
+{<- content|}
+->->
+
+== content ==
+Content
+-> DONE
+";
+
+            Story story = CompileString(storyStr);
+
+            Assert.AreEqual ("Content\n", story.Continue ());
+        }
+
         // Helper compile function
         protected Story CompileString(string str, bool countAllVisits = false, bool testingErrors = false)
         {
@@ -2269,7 +2291,7 @@ this is the end
             // Convert to json and back again
             if (_mode == TestMode.JsonRoundTrip)
             {
-                var jsonStr = story.ToJsonString(indented: true);
+                var jsonStr = story.ToJsonString();
                 story = new Story(jsonStr);
             }
 
