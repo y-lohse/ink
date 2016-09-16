@@ -154,9 +154,7 @@ namespace Ink
                 opts.playMode = true;
             }
 
-            PrintMessages (authorMessages, ConsoleColor.Green);
-            PrintMessages (warnings, ConsoleColor.Blue);
-            PrintMessages (errors, ConsoleColor.Red);
+            PrintAllMessages ();
 
             if (story == null || errors.Count > 0) {
 				Environment.Exit (ExitCodeError);
@@ -181,6 +179,8 @@ namespace Ink
             // the test script is also played
             if (opts.playMode) {
 
+                _playing = true;
+
                 // Always allow ink external fallbacks
                 story.allowExternalFunctionFallbacks = true;
 
@@ -188,7 +188,17 @@ namespace Ink
 
                 //Capture a CTRL+C key combo so we can restore the console's foreground color back to normal when exiting
                 Console.CancelKeyPress += OnExit;
-                player.Begin ();
+
+                try {
+                    player.Begin ();
+                } catch (Runtime.StoryException e) {
+                    if (e.Message.Contains ("Missing function binding")) {
+                        OnError (e.Message, ErrorType.Error);
+                        PrintAllMessages ();
+                    } else {
+                        throw e;
+                    }
+                }
             } 
 
             // Compile mode
@@ -224,6 +234,9 @@ namespace Ink
                 errors.Add (message);
                 break;
             }
+
+            // If you get an error while playing, just print immediately
+            if( _playing ) PrintAllMessages ();
         }
 
         void PrintMessages(List<string> messageList, ConsoleColor colour)
@@ -235,6 +248,17 @@ namespace Ink
             }
 
             Console.ResetColor ();
+        }
+
+        void PrintAllMessages ()
+        {
+            PrintMessages (authorMessages, ConsoleColor.Green);
+            PrintMessages (warnings, ConsoleColor.Blue);
+            PrintMessages (errors, ConsoleColor.Red);
+
+            authorMessages.Clear ();
+            warnings.Clear ();
+            errors.Clear ();
         }
 
         bool ProcessArguments(string[] args)
@@ -342,5 +366,7 @@ namespace Ink
         List<string> errors;
         List<string> warnings;
         List<string> authorMessages;
+
+        bool _playing;
 	}
 }

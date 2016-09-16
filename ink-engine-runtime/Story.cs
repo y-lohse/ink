@@ -15,7 +15,7 @@ namespace Ink.Runtime
         /// <summary>
         /// The current version of the ink story file format.
         /// </summary>
-        public const int inkVersionCurrent = 12;
+        public const int inkVersionCurrent = 13;
 
         // Version numbers are for engine itself and story file, rather
         // than the story state save format (which is um, currently nonexistant)
@@ -174,7 +174,7 @@ namespace Ink.Runtime
         /// </summary>
         public void ResetCallstack()
         {
-            _state.ForceEndFlow ();
+            _state.ForceEnd ();
         }
 
         void ResetGlobals()
@@ -317,7 +317,7 @@ namespace Ink.Runtime
                         Error("Thread available to pop, threads should always be flat by the end of evaluation?");
                     }
 
-                    if( currentChoices.Count == 0 && !state.didSafeExit ) {
+                    if( currentChoices.Count == 0 && !state.didSafeExit && _temporaryEvaluationContainer == null ) {
                         if( state.callStack.CanPop(PushPopType.Tunnel) ) {
                             Error("unexpectedly reached end of content. Do you need a '->->' to return from a tunnel?");
                         } else if( state.callStack.CanPop(PushPopType.Function) ) {
@@ -812,6 +812,45 @@ namespace Ink.Runtime
                     state.PushEvaluationStack (new IntValue (turnCount));
                     break;
 
+                case ControlCommand.CommandType.Random:
+                    var maxInt = state.PopEvaluationStack () as IntValue;
+                    var minInt = state.PopEvaluationStack () as IntValue;
+
+                    if (minInt == null)
+                        Error ("Invalid value for minimum parameter of RANDOM(min, max)");
+
+                    if (maxInt == null)
+                        Error ("Invalid value for maximum parameter of RANDOM(min, max)");
+
+                    // +1 because it's inclusive of min and max, for e.g. RANDOM(1,6) for a dice roll.
+                    var randomRange = maxInt.value - minInt.value + 1;
+                    if (randomRange <= 0)
+                        Error ("RANDOM was called with minimum as " + minInt.value + " and maximum as " + maxInt.value + ". The maximum must be larger");
+
+                    var resultSeed = state.storySeed + state.previousRandom;
+                    var random = new Random(resultSeed);
+
+                    var nextRandom = random.Next ();
+                    var chosenValue = (nextRandom % randomRange) + minInt.value;
+                    state.PushEvaluationStack (new IntValue (chosenValue));
+
+                    // Next random number (rather than keeping the Random object around)
+                    state.previousRandom = nextRandom;
+                    break;
+
+                case ControlCommand.CommandType.SeedRandom:
+                    var seed = state.PopEvaluationStack () as IntValue;
+                    if (seed == null)
+                        Error ("Invalid value passed to SEED_RANDOM");
+
+                    // Story seed affects both RANDOM and shuffle behaviour
+                    state.storySeed = seed.value;
+                    state.previousRandom = 0;
+
+                    // SEED_RANDOM returns nothing.
+                    state.PushEvaluationStack (new Runtime.Void ());
+                    break;
+
                 case ControlCommand.CommandType.VisitIndex:
                     var count = VisitCountForContainer(state.currentContainer) - 1; // index not count
                     state.PushEvaluationStack (new IntValue (count));
@@ -838,13 +877,16 @@ namespace Ink.Runtime
                     // In normal flow - allow safe exit without warning
                     else {
                         state.didSafeExit = true;
+
+                        // Stop flow in current thread
+                        state.currentContentObject = null;
                     }
 
                     break;
                 
                 // Force flow to end completely
                 case ControlCommand.CommandType.End:
-                    state.ForceEndFlow ();
+                    state.ForceEnd ();
                     break;
 
                 default:
@@ -961,6 +1003,129 @@ namespace Ink.Runtime
             state.callStack.currentThread = choiceToChoose.threadAtGeneration;
 
             ChoosePath (choiceToChoose.choicePoint.choiceTarget.path);
+        }
+
+        /// <summary>
+        /// Checks if a function exists.
+        /// </summary>
+        /// <returns>True if the function exists, else false.</returns>
+        /// <param name="functionName">The name of the function as declared in ink.</param>
+        public bool HasFunction (string functionName)
+        {
+            try {
+                return ContentAtPath (new Path (functionName)) is Runtime.Container;
+            } catch {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Evaluates a function defined in ink.
+        /// </summary>
+        /// <returns>The return value as returned from the ink function with `~ return myValue`, or null if nothing is returned.</returns>
+        /// <param name="functionName">The name of the function as declared in ink.</param>
+        /// <param name="arguments">The arguments that the ink function takes, if any. Note that we don't (can't) do any validation on the number of arguments right now, so make sure you get it right!</param>
+        public object EvaluateFunction (string functionName, params object [] arguments)
+        {
+            string _;
+            return EvaluateFunction (functionName, out _, arguments);
+        }
+
+        /// <summary>
+        /// Evaluates a function defined in ink, and gathers the possibly multi-line text as generated by the function.
+        /// This text output is any text written as normal content within the function, as opposed to the return value, as returned with `~ return`.
+        /// </summary>
+        /// <returns>The return value as returned from the ink function with `~ return myValue`, or null if nothing is returned.</returns>
+        /// <param name="functionName">The name of the function as declared in ink.</param>
+        /// <param name="textOutput">The text content produced by the function via normal ink, if any.</param>
+        /// <param name="arguments">The arguments that the ink function takes, if any. Note that we don't (can't) do any validation on the number of arguments right now, so make sure you get it right!</param>
+        public object EvaluateFunction (string functionName, out string textOutput, params object [] arguments)
+        {
+			if(functionName == null) {
+				throw new System.Exception ("Function is null");
+			} else if(functionName == string.Empty || functionName.Trim() == string.Empty) {
+				throw new System.Exception ("Function is empty or white space.");
+			}
+
+            Runtime.Container funcContainer = null;
+            try {
+                funcContainer = ContentAtPath (new Path (functionName)) as Runtime.Container;
+            } catch (StoryException e) {
+                if (e.Message.Contains ("not found"))
+                    throw new System.Exception ("Function doesn't exist: '" + functionName + "'");
+                else
+                    throw e;
+            }
+
+            // We'll start a new callstack, so keep hold of the original,
+            // as well as the evaluation stack so we know if the function 
+            // returned something
+            var originalCallstack = state.callStack;
+            int originalEvaluationStackHeight = state.evaluationStack.Count;
+
+            // Create a new base call stack element.
+            // By making it point at element 0 of the base, when NextContent is
+            // called, it'll actually step past the entire content of the game (!)
+            // and straight onto the Done. Bit of a hack :-/ We don't really have
+            // a better way of creating a temporary context that ends correctly.
+            state.callStack = new CallStack (mainContentContainer);
+            state.callStack.currentElement.currentContainer = mainContentContainer;
+            state.callStack.currentElement.currentContentIndex = 0;
+
+            if (arguments != null) {
+                for (int i = 0; i < arguments.Length; i++) {
+                    if (!(arguments [i] is int || arguments [i] is float || arguments [i] is string)) {
+                        throw new System.ArgumentException ("ink arguments when calling EvaluateFunction must be int, float or string");
+                    }
+
+                    state.evaluationStack.Add (Runtime.Value.Create(arguments[i]));
+                }
+            }
+
+            // Jump into the function!
+            state.callStack.Push (PushPopType.Function);
+            state.currentContentObject = funcContainer;
+
+            // Evaluate the function, and collect the string output
+            var stringOutput = new StringBuilder ();
+            while (canContinue) {
+                stringOutput.Append (Continue ());
+            }
+            textOutput = stringOutput.ToString ();
+
+            // Restore original stack
+            state.callStack = originalCallstack;
+
+            // Do we have a returned value?
+            // Potentially pop multiple values off the stack, in case we need
+            // to clean up after ourselves (e.g. caller of EvaluateFunction may 
+            // have passed too many arguments, and we currently have no way to check for that)
+            Runtime.Object returnedObj = null;
+            while (state.evaluationStack.Count > originalEvaluationStackHeight) {
+                var poppedObj = state.PopEvaluationStack ();
+                if (returnedObj == null)
+                    returnedObj = poppedObj;
+            }
+
+            if (returnedObj) {
+                if (returnedObj is Runtime.Void)
+                    return null;
+
+                // Some kind of value, if not void
+                var returnVal = returnedObj as Runtime.Value;
+
+                // DivertTargets get returned as the string of components
+                // (rather than a Path, which isn't public)
+                if (returnVal.valueType == ValueType.DivertTarget) {
+                    return returnVal.valueObject.ToString ();
+                }
+
+                // Other types can just have their exact object type:
+                // int, float, string. VariablePointers get returned as strings.
+                return returnVal.valueObject;
+            }
+
+            return null;
         }
 
         // Evaluate a "hot compiled" piece of ink content, as used by the REPL-like
@@ -1080,7 +1245,7 @@ namespace Ink.Runtime
             if (value == null)
                 return null;
 
-            if (value.GetType () == typeof(T))
+            if (value is T)
                 return (T) value;
 
             if (value is float && typeof(T) == typeof(int)) {
@@ -1295,11 +1460,22 @@ namespace Ink.Runtime
                     INamedContent fallbackFunction = null;
                     bool fallbackFound = mainContentContainer.namedContent.TryGetValue (name, out fallbackFunction);
 
+                    string message = null;
                     if (!allowExternalFunctionFallbacks)
-                        Error ("Missing function binding for external '" + name + "' (ink fallbacks disabled)");
+                        message = "Missing function binding for external '" + name + "' (ink fallbacks disabled)";
                     else if( !fallbackFound ) {
-                        Error ("Missing function binding for external '" + name + "', and no fallback ink function found.");
+                        message = "Missing function binding for external '" + name + "', and no fallback ink function found.";
                     }
+
+                    if (message != null) {
+                        string errorPreamble = "ERROR: ";
+                        if (divert.debugMetadata != null) {
+                            errorPreamble += string.Format ("'{0}' line {1}: ", divert.debugMetadata.fileName, divert.debugMetadata.startLineNumber);
+                        }
+
+                        throw new StoryException (errorPreamble + message);
+                    }
+
                 }
             }
         }
@@ -1637,7 +1813,7 @@ namespace Ink.Runtime
             state.AddError (message);
 
             // In a broken state don't need to know about any other errors.
-            state.ForceEndFlow ();
+            state.ForceEnd ();
         }
 
         void Assert(bool condition, string message = null, params object[] formatParams)

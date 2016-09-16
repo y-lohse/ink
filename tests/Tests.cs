@@ -2274,6 +2274,158 @@ Content
             Assert.AreEqual ("Content\n", story.Continue ());
         }
 
+        [Test ()]
+        public void TestTempUsageInOptions ()
+        {
+            var storyStr =
+                @"
+~ temp one = 1
+* \ {one}
+- End of choice 
+    -> another
+* (another) this [is] another
+ -> DONE
+";
+
+            Story story = CompileString (storyStr);
+            story.Continue ();
+                 
+            Assert.AreEqual (1, story.currentChoices.Count);
+            Assert.AreEqual (" 1", story.currentChoices[0].text);
+            story.ChooseChoiceIndex (0);
+
+            Assert.AreEqual (" 1\nEnd of choice\nthis  another\n", story.ContinueMaximally ());
+
+            Assert.AreEqual (0, story.currentChoices.Count);
+        }
+
+
+        [Test ()]
+        public void TestEvaluatingInkFunctionsFromGame ()
+        {
+            var storyStr =
+                @"
+Top level content
+* choice
+
+== somewhere ==
+= else
+-> DONE
+
+== function test ==
+~ return -> somewhere.else
+";
+
+            Story story = CompileString (storyStr);
+            story.Continue ();
+
+            var returnedDivertTarget = story.EvaluateFunction ("test");
+
+            // Divert target should get returned as a string
+            Assert.AreEqual ("somewhere.else", returnedDivertTarget);
+        }
+
+        [Test ()]
+        public void TestEvaluatingInkFunctionsFromGame2 ()
+        {
+            var storyStr =
+                @"
+One
+Two
+Three
+
+== function func1 ==
+This is a function
+~ return 5
+
+== function func2 ==
+This is a function without a return value
+~ return
+
+== function add(x,y) ==
+x = {x}, y = {y}
+~ return x + y
+";
+
+            Story story = CompileString (storyStr);
+
+            string textOutput;
+            var funcResult = story.EvaluateFunction ("func1", out textOutput);
+            Assert.AreEqual ("This is a function\n", textOutput);
+            Assert.AreEqual (5, funcResult);
+
+            Assert.AreEqual ("One\n", story.Continue());
+
+            funcResult = story.EvaluateFunction ("func2", out textOutput);
+            Assert.AreEqual ("This is a function without a return value\n", textOutput);
+            Assert.AreEqual (null, funcResult);
+
+            Assert.AreEqual ("Two\n", story.Continue ());
+
+            funcResult = story.EvaluateFunction ("add", out textOutput, 1, 2);
+            Assert.AreEqual ("x = 1, y = 2\n", textOutput);
+            Assert.AreEqual (3, funcResult);
+
+            Assert.AreEqual ("Three\n", story.Continue ());
+        }
+
+        [Test ()]
+        public void TestDoneStopsThread ()
+        {
+            var storyStr =
+                @"
+-> DONE
+This content is inaccessible.
+";
+
+            Story story = CompileString (storyStr);
+
+            Assert.AreEqual (string.Empty, story.ContinueMaximally ());
+        }
+
+        [Test ()]
+        public void TestWrongVariableDivertTargetReference ()
+        {
+            var storyStr =
+                @"
+-> go_to_broken(-> SOMEWHERE)
+
+== go_to_broken(-> b)
+ -> go_to(-> b) // INSTEAD OF: -> go_to(b)
+
+== go_to(-> a)
+  -> a
+
+== SOMEWHERE ==
+Should be able to get here!
+-> DONE
+";
+            CompileStringWithoutRuntime (storyStr, testingErrors:true);
+
+            Assert.IsTrue (HadError ("it shouldn't be preceded by '->'"));
+        }
+
+        [Test ()]
+        public void TestLeftRightGlueMatching ()
+        {
+            var storyStr =
+                @"
+A line.
+{ f():
+    Another line.
+}
+
+== function f ==
+{false:nothing}
+~ return true
+
+";
+            var story = CompileString (storyStr);
+
+            Assert.AreEqual ("A line.\nAnother line.\n", story.ContinueMaximally ());
+        }
+
+
         // Helper compile function
         protected Story CompileString(string str, bool countAllVisits = false, bool testingErrors = false)
         {
